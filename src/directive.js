@@ -12,6 +12,7 @@
             scope: {
                 response: '=?ngModel',
                 key: '=?',
+                assincKey: '=?',
                 stoken: '=?',
                 theme: '=?',
                 size: '=?',
@@ -20,6 +21,8 @@
                 badge: '=?',
                 tabindex: '=?',
                 required: '=?',
+                requestKey: '&',
+                afterRequestKey: '&',
                 onCreate: '&',
                 onSuccess: '&',
                 onExpire: '&',
@@ -48,6 +51,8 @@
 
                         callback: callback,
                         key: key,
+                        requestKey: scope.requestKey || attrs.requestKey || null,
+                        afterRequestKey: scope.afterRequestKey || attrs.afterRequestKey || null,
                         stoken: scope.stoken || attrs.stoken || null,
                         theme: scope.theme || attrs.theme || null,
                         type: scope.type || attrs.type || null,
@@ -77,7 +82,7 @@
 
                     // Remove this listener to avoid creating the widget more than once.
                     removeCreationListener();
-                });
+                });               
 
                 function destroy() {
                   if (ctrl) {

@@ -11,7 +11,7 @@
     /**
      * An angular service to wrap the reCaptcha API
      */
-    app.provider('vcRecaptchaService', function(){
+    app.provider('vcRecaptchaService', function () {
         var provider = this;
         var config = {};
         provider.onLoadFunctionName = 'vcRecaptchaApiLoaded';
@@ -22,7 +22,7 @@
          * @since 2.5.0
          * @param defaults  object which overrides the current defaults object.
          */
-        provider.setDefaults = function(defaults){
+        provider.setDefaults = function (defaults) {
             ng.copy(defaults, config);
         };
 
@@ -32,7 +32,7 @@
          * @since 2.5.0
          * @param siteKey  the reCaptcha public key (refer to the README file if you don't know what this is).
          */
-        provider.setSiteKey = function(siteKey){
+        provider.setSiteKey = function (siteKey) {
             config.key = siteKey;
         };
 
@@ -42,7 +42,7 @@
          * @since 2.5.0
          * @param theme  The reCaptcha theme.
          */
-        provider.setTheme = function(theme){
+        provider.setTheme = function (theme) {
             config.theme = theme;
         };
 
@@ -52,7 +52,7 @@
          * @since 2.5.0
          * @param stoken  The reCaptcha stoken.
          */
-        provider.setStoken = function(stoken){
+        provider.setStoken = function (stoken) {
             config.stoken = stoken;
         };
 
@@ -62,7 +62,7 @@
          * @since 2.5.0
          * @param size  The reCaptcha size.
          */
-        provider.setSize = function(size){
+        provider.setSize = function (size) {
             config.size = size;
         };
 
@@ -72,7 +72,7 @@
          * @since 2.5.0
          * @param type  The reCaptcha type.
          */
-        provider.setType = function(type){
+        provider.setType = function (type) {
             config.type = type;
         };
 
@@ -81,7 +81,7 @@
          *
          * @param lang  The reCaptcha language.
          */
-        provider.setLang = function(lang){
+        provider.setLang = function (lang) {
             config.lang = lang;
         };
 
@@ -90,7 +90,7 @@
          *
          * @param badge  The reCaptcha badge position.
          */
-        provider.setBadge = function(badge){
+        provider.setBadge = function (badge) {
             config.badge = badge;
         };
 
@@ -100,11 +100,11 @@
          * @since 2.5.0
          * @param onLoadFunctionName  string name which overrides the name of the onload function. Should match what is in the recaptcha script querystring onload value.
          */
-        provider.setOnLoadFunctionName = function(onLoadFunctionName){
+        provider.setOnLoadFunctionName = function (onLoadFunctionName) {
             provider.onLoadFunctionName = onLoadFunctionName;
         };
 
-        provider.$get = ['$rootScope','$window', '$q', '$document', '$interval', function ($rootScope, $window, $q, $document, $interval) {
+        provider.$get = ['$rootScope', '$window', '$q', '$document', '$interval', '$http', function ($rootScope, $window, $q, $document, $interval, $http) {
             var deferred = $q.defer(), promise = deferred.promise, instances = {}, recaptcha;
 
             $window.vcRecaptchaApiLoadedCallback = $window.vcRecaptchaApiLoadedCallback || [];
@@ -118,7 +118,7 @@
             $window.vcRecaptchaApiLoadedCallback.push(callback);
 
             $window[provider.onLoadFunctionName] = function () {
-                $window.vcRecaptchaApiLoadedCallback.forEach(function(callback) {
+                $window.vcRecaptchaApiLoadedCallback.forEach(function (callback) {
                     callback();
                 });
             };
@@ -143,12 +143,36 @@
             }
 
 
+            function requestKeyData(config) {
+                var deff = $q.defer();
+                var request = {};
+                ng.copy(config, request);
+
+                $http(request)
+                    .then(function (response) {
+                        if (response && response.data) {
+                            deff.resolve(response.data);
+                        }
+                        else {
+                            deff.reject({ error: "siteKey not found!" });
+                        }
+                    })
+                    .catch(function (error) {
+                        deff.reject(error);
+                    })
+
+                return deff.promise;
+
+            }
+
+
+
             // Check if grecaptcha.render is not defined already.
             if (isRenderFunctionAvailable()) {
                 callback();
             } else if ($window.document.querySelector('script[src^="https://www.google.com/recaptcha/api.js"]')) {
                 // wait for script to be loaded.
-                var intervalWait = $interval(function() {
+                var intervalWait = $interval(function () {
                     if (isRenderFunctionAvailable()) {
                         $interval.cancel(intervalWait);
                         callback();
@@ -159,11 +183,12 @@
                 var script = $window.document.createElement('script');
                 script.async = true;
                 script.defer = true;
-                script.src = 'https://www.google.com/recaptcha/api.js?onload='+provider.onLoadFunctionName+'&render=explicit';
+                script.src = 'https://www.google.com/recaptcha/api.js?onload=' + provider.onLoadFunctionName + '&render=explicit';
                 $document.find('body')[0].appendChild(script);
             }
 
             return {
+
 
                 /**
                  * Creates a new reCaptcha object
@@ -175,6 +200,8 @@
                 create: function (elm, conf) {
 
                     conf.sitekey = conf.key || config.key;
+                    conf.requestKey = conf.requestKey || config.requestKey;
+                    conf.afterRequestKey = conf.afterRequestKey || config.afterRequestKey;
                     conf.theme = conf.theme || config.theme;
                     conf.stoken = conf.stoken || config.stoken;
                     conf.size = conf.size || config.size;
@@ -182,14 +209,30 @@
                     conf.hl = conf.lang || config.lang;
                     conf.badge = conf.badge || config.badge;
 
-                    if (!conf.sitekey) {
+                    if (conf.requestKey) {
+                       return requestKeyData(conf.requestKey())
+                            .then(function(response){
+                                conf.sitekey = conf.afterRequestKey ? conf.afterRequestKey({payload: response}) : response;
+                                return getRecaptcha().then(function (recaptcha) {
+                                    var widgetId = recaptcha.render(elm, conf);
+                                    instances[widgetId] = elm;
+                                    return widgetId;
+                                });
+                            })
+                            .catch(function(error){
+                                throwNoKeyException();
+                            })
+                    } else if (conf.sitekey) {
+
+                        return getRecaptcha().then(function (recaptcha) {
+                            var widgetId = recaptcha.render(elm, conf);
+                            instances[widgetId] = elm;
+                            return widgetId;
+                        });
+
+                    } else {
                         throwNoKeyException();
                     }
-                    return getRecaptcha().then(function (recaptcha) {
-                        var widgetId = recaptcha.render(elm, conf);
-                        instances[widgetId] = elm;
-                        return widgetId;
-                    });
                 },
 
                 /**
